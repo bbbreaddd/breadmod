@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.bbbreaddd.breadmod.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "BoMMixin",
+    "EmiApiMixin",
+    "EmiPlayerInventoryMixin",
+    "EmiUtilMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

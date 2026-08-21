@@ -1,0 +1,61 @@
+plugins {
+	id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+	id 'org.spongepowered.mixin' version '0.7.38'
+}
+
+group = 'dev.bbbreaddd.breadmod'
+version = "${mod_version}+${minecraft_version}"
+
+base {
+	archivesName = 'breadmod'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+	mappings channel: 'official', version: minecraft_version
+	runs {
+		client {
+			workingDirectory project.file('run')
+			property 'forge.logging.console.level', 'debug'
+			mods { breadmod { source sourceSets.main } }
+		}
+	}
+}
+
+repositories {
+	maven {
+		name = 'Sleeping Town'
+		url = 'https://repo.sleeping.town/'
+	}
+	maven {
+		name = 'BlameJared'
+		url = 'https://maven.blamejared.com/'
+	}
+}
+
+dependencies {
+	minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+	compileOnly fg.deobf("dev.emi:emi-forge:${emi_version}")
+	compileOnly fg.deobf("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
+	compileOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge-api:${jei_version}")
+}
+
+mixin {
+	add sourceSets.main, 'breadmod.refmap.json'
+	config 'breadmod.mixins.json'
+}
+
+tasks.named('processResources', ProcessResources).configure {
+	var replaceProperties = [version: project.version]
+	inputs.properties replaceProperties
+	filesMatching('META-INF/mods.toml') { expand replaceProperties }
+}
+
+tasks.named('jar', Jar).configure {
+	from('LICENSE')
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
