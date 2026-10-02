@@ -16,15 +16,25 @@ public class BreadmodPlugin implements EmiPlugin {
 
 	@Override
 	public void register(EmiRegistry registry) {
-		MysticalAgricultureSupport.register(registry);
+		if (BreadmodConfig.reusableIngredientFix()) {
+			safely(() -> DurableIngredientSupport.register(registry), "durability comparison");
+			safely(() -> MysticalAgricultureSupport.register(registry), "mystical agriculture comparison");
+			safely(() -> MekanismSupport.register(registry), "mekanism comparison");
+		}
 
 		MenuType<AbstractContainerMenu> type = RefinedStorageSupport.gridMenuType();
 		if (type == null) {
-			// Nothing else in the mod does anything without the Grid, so say so once rather than
-			// leaving an inert sidebar to be puzzled over.
 			LOGGER.warn("Could not resolve the Refined Storage Grid menu type; craftables disabled");
 			return;
 		}
 		registry.addRecipeHandler(type, new GridRecipeHandler());
+	}
+
+	private static void safely(Runnable task, String name) {
+		try {
+			task.run();
+		} catch (RuntimeException exception) {
+			LOGGER.warn("Breadmod {} fix failed; continuing without it", name, exception);
+		}
 	}
 }

@@ -24,8 +24,18 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
 @Mixin(value = EmiPlayerInventory.class, remap = false)
 public abstract class EmiPlayerInventoryMixin {
-	@Inject(method = "getCraftables", at = @At("HEAD"), cancellable = true)
+	@Inject(method = "getCraftables", at = @At("HEAD"), cancellable = true, require = 0)
 	private void breadmod$deduplicateOutputs(CallbackInfoReturnable<List<EmiIngredient>> cir) {
+		if (!dev.bbbreaddd.breadmod.BreadmodConfig.rsCraftablesReplacement()) {
+			return;
+		}
+		try {
+			breadmod$buildCraftables(cir);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private void breadmod$buildCraftables(CallbackInfoReturnable<List<EmiIngredient>> cir) {
 		AbstractContainerScreen<?> screen = EmiApi.getHandledScreen();
 		if (!RefinedStorageSupport.isGridScreen(screen)) {
 			return;
@@ -40,26 +50,27 @@ public abstract class EmiPlayerInventoryMixin {
 			cir.setReturnValue(List.of());
 			return;
 		}
-		// One pass: the first recipe that both passes the predicate and produces an output we have
-		// not emitted yet wins, so an output is only tested until something can craft it.
 		Set<Object> emitted = new HashSet<>();
 		List<EmiFavorite.Craftable> craftables = new ArrayList<>();
 		for (EmiRecipe recipe : RefinedStorageSupport.candidates(self)) {
-			// A display-only recipe is listed under what the Grid would actually craft from it,
-			// which is the rebuilt form; the recipe as registered may not name an output at all.
 			EmiRecipe fillable = RefinedStorageSupport.fillable(recipe);
-			if (recipe.hideCraftable() || !RefinedStorageSupport.isCraftable(fillable)) {
+			boolean hidden = recipe.hideCraftable();
+			boolean craftable = RefinedStorageSupport.isCraftable(fillable);
+			if (hidden || !craftable) {
+				RefinedStorageSupport.logEssencePipeline(recipe, fillable, hidden, craftable, false, false);
 				continue;
 			}
 			Object key = RefinedStorageSupport.outputKey(fillable.getOutputs().get(0));
-			if (emitted.contains(key) || !predicate.test(recipe)) {
+			boolean duplicate = emitted.contains(key);
+			boolean predicateAccepted = !duplicate && predicate.test(recipe);
+			RefinedStorageSupport.logEssencePipeline(recipe, fillable, hidden, craftable,
+				duplicate, predicateAccepted);
+			if (duplicate || !predicateAccepted) {
 				continue;
 			}
 			emitted.add(key);
 			craftables.add(new EmiFavorite.Craftable(fillable));
 		}
-		// Look each sort index up once rather than on every comparison; the lookup hashes an
-		// EmiStack, which is not cheap enough to repeat O(n log n) times.
 		Map<EmiIngredient, Integer> order = new IdentityHashMap<>();
 		Map<EmiIngredient, String> names = new IdentityHashMap<>();
 		for (EmiFavorite.Craftable craftable : craftables) {
@@ -75,8 +86,6 @@ public abstract class EmiPlayerInventoryMixin {
 			if (amount != 0) {
 				return amount;
 			}
-			// Items EMI's index does not rank all share one index, so break the tie on something
-			// stable; otherwise their relative order follows hash iteration and reshuffles.
 			return names.get(a).compareTo(names.get(b));
 		});
 		RefinedStorageSupport.debugDump(craftables);

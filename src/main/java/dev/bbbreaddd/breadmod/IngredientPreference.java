@@ -6,89 +6,174 @@ import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.recipe.EmiResolutionRecipe;
+import dev.emi.emi.api.recipe.VanillaEmiRecipeCategories;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.emi.emi.api.stack.TagEmiIngredient;
+import dev.emi.emi.bom.BoM;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.resources.ResourceLocation;
 
-/**
- * Supplies a useful last-resort resolution for recipe ingredients with several accepted stacks.
- *
- * <p>EMI deliberately leaves these unresolved until the player picks one. That is valuable when
- * the choice changes the recipe tree, but makes routine recipes ask the same question repeatedly.
- * EMI's saved user choice and data-pack defaults are consulted before this class, so an explicit
- * preference always wins.
- */
 public final class IngredientPreference {
 	private IngredientPreference() {
 	}
 
-	/**
-	 * Builds EMI's ordinary resolution recipe for the best automatic candidate, or {@code null} if
-	 * this ingredient is not actually ambiguous.
-	 */
 	public static EmiRecipe resolve(EmiIngredient ingredient) {
 		List<EmiStack> accepted = ingredient.getEmiStacks();
 		if (accepted.size() < 2) {
 			return null;
 		}
 
-		EmiStack selected = firstUsable(accepted);
+		EmiStack selected = preferredVariant(ingredient, accepted);
 		AbstractContainerScreen<?> screen = EmiApi.getHandledScreen();
 		if (RefinedStorageSupport.isGridScreen(screen)) {
-			selected = mostAvailable(accepted, RefinedStorageSupport.getInventory(screen), selected);
+			selected = preferredAvailable(accepted, RefinedStorageSupport.getInventory(screen), selected);
 		}
 		return selected == null ? null : new EmiResolutionRecipe(ingredient, selected);
 	}
 
-	/**
-	 * Finds the conventional primary recipe for a single item.
-	 *
-	 * <p>Many mods give their main recipe the same id as its output and suffix reverse conversions
-	 * with names such as {@code _uncraft}. EMI otherwise breaks equal-scoring recipes by registration
-	 * order, which can make a storage-block unpacking recipe win in the recipe tree. Matching ids are
-	 * a strong, mod-supplied signal that avoids hard-coding individual items or recipe namespaces.
-	 */
-	public static EmiRecipe canonicalRecipe(EmiIngredient ingredient) {
-		List<EmiStack> stacks = ingredient.getEmiStacks();
-		if (stacks.size() != 1 || stacks.get(0).isEmpty()) {
+	public static EmiRecipe improvePreferred(List<EmiRecipe> recipes, EmiRecipe original) {
+		if (original == null) {
 			return null;
 		}
-		EmiStack output = stacks.get(0);
-		for (EmiRecipe recipe : EmiApi.getRecipeManager().getRecipesByOutput(output)) {
-			if (output.getId().equals(recipe.getId())
-					&& recipe.supportsRecipeTree()
-					&& recipe.getOutputs().stream().anyMatch(stack -> stack.isEqual(output))) {
-				return recipe;
+		EmiRecipe preferred = original;
+		int preferredScore = preferenceScore(original);
+		for (EmiRecipe recipe : recipes) {
+			if (!recipe.supportsRecipeTree() || BoM.disabledRecipes.contains(recipe)) {
+				continue;
+			}
+			int score = preferenceScore(recipe);
+			if (preferred == null || score > preferredScore
+					|| (score == preferredScore && stableId(recipe).compareTo(stableId(preferred)) < 0)) {
+				preferred = recipe;
+				preferredScore = score;
 			}
 		}
-		return null;
+		return preferred;
 	}
 
-	/**
-	 * Tag/list order is meaningful data supplied by the recipe or mod author, and is the safest
-	 * deterministic fallback when none of the accepted variants is currently available.
-	 */
-	private static EmiStack firstUsable(List<EmiStack> accepted) {
+	private static int preferenceScore(EmiRecipe recipe) {
+		ResourceLocation recipeId = recipe.getId();
+		ResourceLocation categoryId = recipe.getCategory().getId();
+		EmiStack output = recipe.getOutputs().isEmpty() ? EmiStack.EMPTY : recipe.getOutputs().get(0);
+		String recipePath = recipeId == null ? "" : recipeId.getPath().toLowerCase();
+		String categoryPath = categoryId == null ? "" : categoryId.getPath().toLowerCase();
+		int score = 0;
+
+		if (recipe.getCategory().equals(VanillaEmiRecipeCategories.CRAFTING)) {
+			score += 10_000;
+		}
+		if (!output.isEmpty() && output.getId().equals(recipeId)) {
+			score += 2_000;
+		}
+		if (categoryId != null && !output.isEmpty()
+				&& output.getId().getNamespace().equals(categoryId.getNamespace())) {
+			score += 1_000;
+		}
+		if (categoryPath.contains("inscriber")) {
+			score += 500;
+		}
+		if (categoryPath.contains("reaction")) {
+			score -= 500;
+		}
+		if (containsAny(recipePath, "uncraft", "recycl", "reverse")) {
+			score -= 20_000;
+		}
+		return score;
+	}
+
+	private static boolean containsAny(String value, String... needles) {
+		for (String needle : needles) {
+			if (value.contains(needle)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String stableId(EmiRecipe recipe) {
+		ResourceLocation id = recipe.getId();
+		return recipe.getCategory().getId() + "/" + (id == null ? "" : id);
+	}
+
+	private static EmiStack preferredVariant(EmiIngredient ingredient, List<EmiStack> accepted) {
+		String tagPath = ingredient instanceof TagEmiIngredient tag
+			? tag.key.location().getPath().toLowerCase()
+			: "";
+		EmiStack preferred = null;
+		int preferredScore = Integer.MIN_VALUE;
 		for (EmiStack stack : accepted) {
-			if (!stack.isEmpty()) {
-				return stack;
+			if (stack.isEmpty()) {
+				continue;
+			}
+			int score = variantScore(tagPath, stack);
+			if (preferred == null || score > preferredScore
+					|| (score == preferredScore && stack.getId().toString()
+						.compareTo(preferred.getId().toString()) < 0)) {
+				preferred = stack;
+				preferredScore = score;
 			}
 		}
-		return null;
+		return preferred;
 	}
 
-	/** Prefer the accepted stack with the greatest quantity in the open Grid's combined view. */
-	private static EmiStack mostAvailable(List<EmiStack> accepted, EmiPlayerInventory inventory,
+	private static int variantScore(String tagPath, EmiStack stack) {
+		String itemPath = stack.getId().getPath().toLowerCase();
+		int score = 0;
+		if (!tagPath.isEmpty()) {
+			if (tagPath.equals(itemPath) || tagPath.equals(itemPath + "s")) {
+				score += 3_000;
+			}
+			if (tagPath.endsWith("_blocks")
+					&& tagPath.substring(0, tagPath.length() - "_blocks".length()).equals(itemPath)) {
+				score += 3_000;
+			}
+			if (singularize(tagPath).equals(singularize(itemPath))) {
+				score += 2_000;
+			}
+		}
+		if (stack.getId().getNamespace().equals("minecraft")) {
+			score += 500;
+		}
+		if (containsAny(itemPath, "framed", "reinforced", "tinted", "chiseled",
+				"decorative", "encased", "ornate")) {
+			score -= 1_000;
+		}
+		return score - itemPath.length();
+	}
+
+	private static String singularize(String value) {
+		String[] parts = value.split("_");
+		for (int i = 0; i < parts.length; i++) {
+			if (parts[i].length() > 1 && parts[i].endsWith("s") && !parts[i].endsWith("ss")) {
+				parts[i] = parts[i].substring(0, parts[i].length() - 1);
+			}
+		}
+		return String.join("_", parts);
+	}
+
+	private static EmiStack preferredAvailable(List<EmiStack> accepted, EmiPlayerInventory inventory,
 			EmiStack fallback) {
+		if (available(inventory, fallback) > 0) {
+			return fallback;
+		}
 		EmiStack best = fallback;
 		long bestAmount = 0;
 		for (EmiStack candidate : accepted) {
-			EmiStack stored = inventory.inventory.get(candidate);
-			if (stored != null && stored.getAmount() > bestAmount) {
+			long amount = available(inventory, candidate);
+			if (amount > bestAmount) {
 				best = candidate;
-				bestAmount = stored.getAmount();
+				bestAmount = amount;
 			}
 		}
 		return best;
+	}
+
+	private static long available(EmiPlayerInventory inventory, EmiStack candidate) {
+		if (candidate == null) {
+			return 0;
+		}
+		EmiStack stored = inventory.inventory.get(candidate);
+		return stored == null ? 0 : stored.getAmount();
 	}
 }

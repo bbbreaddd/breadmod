@@ -1,5 +1,6 @@
 {
   "tags": {
-    "#item:ae2:illuminated_panel": "item:ae2:monitor"
+    "#item:ae2:illuminated_panel": "item:ae2:monitor",
+    "#item:c:glass_blocks": "item:minecraft:glass"
   }
 }

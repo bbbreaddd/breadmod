@@ -15,20 +15,20 @@ config="breadmod.mixins.json"
 [[dependencies.breadmod]]
 modId="emi"
 mandatory=true
-versionRange="[1.1.0,)"
+versionRange="[1.1.20,1.2.0)"
 ordering="AFTER"
 side="CLIENT"
 
 [[dependencies.breadmod]]
 modId="jei"
 mandatory=true
-versionRange="[15,)"
+versionRange="[15.20.0,16.0.0)"
 ordering="AFTER"
 side="CLIENT"
 
 [[dependencies.breadmod]]
 modId="refinedstorage"
 mandatory=true
-versionRange="[1.12.4,2)"
+versionRange="[1.12.0,1.13.0)"
 ordering="AFTER"
 side="CLIENT"

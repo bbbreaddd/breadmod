@@ -12,19 +12,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 
-/**
- * EMI's handler for a Refined Storage Grid.
- *
- * <p>Registered against the Grid's menu type, so EMI resolves it before the handler the JEI bridge
- * synthesizes from Refined Storage's transfer handler. That matters because the bridged handler
- * reports an empty inventory and answers every question by dry-running the transfer, which walks the
- * whole network view; asking it once per recipe in the game, as the craftables sidebar does, locks
- * the screen up.
- *
- * <p>Only the sidebar needs that replacement, so everything else is delegated straight back to
- * Refined Storage rather than reimplemented. In particular the fill button keeps Refined Storage's
- * own answers, including the ctrl-click autocrafting request it offers when ingredients are missing.
- */
 public class GridRecipeHandler implements EmiRecipeHandler<AbstractContainerMenu> {
 	@Override
 	public EmiPlayerInventory getInventory(AbstractContainerScreen<AbstractContainerMenu> screen) {
@@ -43,11 +30,10 @@ public class GridRecipeHandler implements EmiRecipeHandler<AbstractContainerMenu
 	public boolean canCraft(EmiRecipe recipe, EmiCraftContext<AbstractContainerMenu> context) {
 		EmiRecipe fillable = RefinedStorageSupport.fillable(recipe);
 		if (context.getType() == EmiCraftContext.Type.CRAFTABLE) {
-			// Answered from the snapshot: this runs for every candidate recipe.
 			return fillable != null
 				&& RefinedStorageSupport.isCraftingGrid(context.getScreen())
-				&& context.getInventory().canCraft(fillable)
-				&& RefinedStorageSupport.matchesIngredientNbt(fillable);
+				&& RefinedStorageSupport.canCraftBacking(fillable, context.getInventory(), context.getScreen())
+				&& RefinedStorageSupport.matchesIngredientNbt(fillable, context.getScreen());
 		}
 		if (fillable != null && usesDelegate(fillable, context.getScreen())) {
 			EmiRecipeHandler<AbstractContainerMenu> delegate =
@@ -71,10 +57,6 @@ public class GridRecipeHandler implements EmiRecipeHandler<AbstractContainerMenu
 	@Override
 	public void render(EmiRecipe recipe, EmiCraftContext<AbstractContainerMenu> context,
 			List<Widget> widgets, GuiGraphics graphics) {
-		// Refined Storage's feedback shades the slots the screen drew, matching them by identity
-		// against the recipe's own ingredients. A rebuilt recipe does not own those slots, so every
-		// missing ingredient would be shaded in the corner instead; leave the recipe unshaded rather
-		// than mark the wrong thing. Filling still works, ctrl+click autocrafting included.
 		EmiRecipe fillable = RefinedStorageSupport.fillable(recipe);
 		if (fillable != recipe || !usesDelegate(fillable, context.getScreen())) {
 			return;
