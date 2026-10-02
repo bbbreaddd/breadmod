@@ -111,7 +111,9 @@ final class GridSnapshot {
 					record(itemStack, amount);
 				}
 			}
-		} catch (ReflectiveOperationException | RuntimeException ignored) {
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("grid-scan",
+				"could not scan RS network view", exception);
 		}
 	}
 
@@ -137,7 +139,9 @@ final class GridSnapshot {
 					record(stack, stack.getCount());
 				}
 			}
-		} catch (ReflectiveOperationException | RuntimeException ignored) {
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("grid-matrix",
+				"could not read RS crafting matrix", exception);
 		}
 	}
 

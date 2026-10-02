@@ -10,6 +10,8 @@ public final class BreadmodConfig {
 	public static final ForgeConfigSpec.BooleanValue CANONICAL_RECIPE_PREFERENCE;
 	public static final ForgeConfigSpec.BooleanValue NBT_LOOKUP_FALLBACK;
 	public static final ForgeConfigSpec.BooleanValue REUSABLE_INGREDIENT_FIX;
+	public static final ForgeConfigSpec.BooleanValue AGGRESSIVE_DURABILITY_NORMALIZATION;
+	public static final ForgeConfigSpec.BooleanValue FOCUS_USEFUL_RECIPE;
 	public static final ForgeConfigSpec.IntValue SNAPSHOT_REFRESH_MS;
 	public static final ForgeConfigSpec.BooleanValue DEBUG_DIAGNOSTICS;
 
@@ -34,8 +36,18 @@ public final class BreadmodConfig {
 			.define("nbtLookupFallback", true);
 		REUSABLE_INGREDIENT_FIX = builder
 			.comment("Apply reusable-ingredient comparison fixes (damage-insensitive tools,",
-				"Mystical Agriculture infusion crystals, Mekanism energy tablets).")
+				"Mystical Agriculture infusion crystals, Mekanism energy tablets).",
+				"Registry-time behavior: changing this requires an EMI reload / game restart.")
 			.define("reusableIngredientFix", true);
+		AGGRESSIVE_DURABILITY_NORMALIZATION = builder
+			.comment("Redefine comparison for EVERY damageable item (old global behavior).",
+				"Off = only items that declare a crafting remainder are normalized.",
+				"Registry-time behavior: changing this requires an EMI reload / game restart.")
+			.define("aggressiveDurabilityNormalization", false);
+		FOCUS_USEFUL_RECIPE = builder
+			.comment("When EMI displays recipes for an ingredient, focus a useful recipe",
+				"instead of showing an empty picker when no explicit default exists.")
+			.define("focusUsefulRecipe", true);
 		SNAPSHOT_REFRESH_MS = builder
 			.comment("How often the Refined Storage inventory snapshot refreshes, in milliseconds.",
 				"Higher values reduce CPU on large networks; the snapshot also refreshes on screen change.")
@@ -77,6 +89,14 @@ public final class BreadmodConfig {
 
 	public static boolean reusableIngredientFix() {
 		return get(REUSABLE_INGREDIENT_FIX, true);
+	}
+
+	public static boolean aggressiveDurabilityNormalization() {
+		return get(AGGRESSIVE_DURABILITY_NORMALIZATION, false);
+	}
+
+	public static boolean focusUsefulRecipe() {
+		return get(FOCUS_USEFUL_RECIPE, true);
 	}
 
 	public static int snapshotRefreshMs() {

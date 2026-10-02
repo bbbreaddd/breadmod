@@ -63,7 +63,7 @@ public final class FillableRecipes {
 				return null;
 			}
 			return new Rebuilt(input, EmiStack.of(output), crafting.getId(), !shaped, crafting);
-		} catch (RuntimeException ignored) {
+		} catch (RuntimeException | LinkageError exception) {
 			return null;
 		}
 	}

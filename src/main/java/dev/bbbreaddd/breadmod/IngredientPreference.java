@@ -58,29 +58,53 @@ public final class IngredientPreference {
 		EmiStack output = recipe.getOutputs().isEmpty() ? EmiStack.EMPTY : recipe.getOutputs().get(0);
 		String recipePath = recipeId == null ? "" : recipeId.getPath().toLowerCase();
 		String categoryPath = categoryId == null ? "" : categoryId.getPath().toLowerCase();
+		PreferenceInput input = new PreferenceInput(
+			recipe.getCategory().equals(VanillaEmiRecipeCategories.CRAFTING),
+			!output.isEmpty() && output.getId().equals(recipeId),
+			categoryId != null && !output.isEmpty()
+				&& output.getId().getNamespace().equals(categoryId.getNamespace()),
+			categoryPath, recipePath);
 		int score = 0;
-
-		if (recipe.getCategory().equals(VanillaEmiRecipeCategories.CRAFTING)) {
-			score += 10_000;
-		}
-		if (!output.isEmpty() && output.getId().equals(recipeId)) {
-			score += 2_000;
-		}
-		if (categoryId != null && !output.isEmpty()
-				&& output.getId().getNamespace().equals(categoryId.getNamespace())) {
-			score += 1_000;
-		}
-		if (categoryPath.contains("inscriber")) {
-			score += 500;
-		}
-		if (categoryPath.contains("reaction")) {
-			score -= 500;
-		}
-		if (containsAny(recipePath, "uncraft", "recycl", "reverse")) {
-			score -= 20_000;
+		for (PreferenceRule rule : PREFERENCE_RULES) {
+			score += rule.score(input);
 		}
 		return score;
 	}
+
+	private record PreferenceInput(boolean craftingCategory, boolean outputMatchesRecipeId,
+			boolean sameNamespace, String categoryPath, String recipePath) {
+	}
+
+	private interface PreferenceRule {
+		int score(PreferenceInput input);
+	}
+
+	private record FlagRule(java.util.function.Predicate<PreferenceInput> test, int weight)
+			implements PreferenceRule {
+		@Override
+		public int score(PreferenceInput input) {
+			return test.test(input) ? weight : 0;
+		}
+	}
+
+	private record ContainsRule(java.util.function.Function<PreferenceInput, String> field,
+			String needle, int weight) implements PreferenceRule {
+		@Override
+		public int score(PreferenceInput input) {
+			String value = field.apply(input);
+			return value != null && value.contains(needle) ? weight : 0;
+		}
+	}
+
+	private static final List<PreferenceRule> PREFERENCE_RULES = List.of(
+		new FlagRule(PreferenceInput::craftingCategory, 10_000),
+		new FlagRule(PreferenceInput::outputMatchesRecipeId, 2_000),
+		new FlagRule(PreferenceInput::sameNamespace, 1_000),
+		new ContainsRule(PreferenceInput::categoryPath, "inscriber", 500),
+		new ContainsRule(PreferenceInput::categoryPath, "reaction", -500),
+		new ContainsRule(PreferenceInput::recipePath, "uncraft", -20_000),
+		new ContainsRule(PreferenceInput::recipePath, "recycl", -20_000),
+		new ContainsRule(PreferenceInput::recipePath, "reverse", -20_000));
 
 	private static boolean containsAny(String value, String... needles) {
 		for (String needle : needles) {

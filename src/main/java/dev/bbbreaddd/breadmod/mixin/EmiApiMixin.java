@@ -4,7 +4,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.EmiUtil;
@@ -12,6 +11,7 @@ import dev.emi.emi.api.recipe.EmiPlayerInventory;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
+import dev.bbbreaddd.breadmod.MixinDiagnostics;
 import dev.bbbreaddd.breadmod.RecipeLookupFallback;
 import dev.emi.emi.bom.BoM;
 import net.minecraft.client.Minecraft;
@@ -26,18 +26,22 @@ public class EmiApiMixin {
 	private static EmiRecipe breadmod$focusUsefulRecipe(EmiIngredient ingredient) {
 		try {
 			EmiRecipe explicit = BoM.getRecipe(ingredient);
-			if (explicit != null) {
+			if (explicit != null
+					|| !dev.bbbreaddd.breadmod.BreadmodConfig.focusUsefulRecipe()) {
 				return explicit;
 			}
 			return EmiUtil.getPreferredRecipe(ingredient,
 				EmiPlayerInventory.of(Minecraft.getInstance().player), false);
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("focus-recipe",
+				"recipe focus redirect failed", exception);
 			return null;
 		}
 	}
 
 	@Inject(method = "displayRecipes", at = @At("HEAD"), cancellable = true, require = 0)
-	private static void breadmod$retrySourcesWithPlainForm(EmiIngredient stack, CallbackInfo ci) {
+	private static void breadmod$retrySourcesWithPlainForm(EmiIngredient stack,
+			org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
 		if (!dev.bbbreaddd.breadmod.BreadmodConfig.nbtLookupFallback()) {
 			return;
 		}
@@ -47,12 +51,15 @@ public class EmiApiMixin {
 				ci.cancel();
 				EmiApi.displayRecipes(plain);
 			}
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("lookup-sources",
+				"NBT lookup fallback failed", exception);
 		}
 	}
 
 	@Inject(method = "displayUses", at = @At("HEAD"), cancellable = true, require = 0)
-	private static void breadmod$retryUsesWithPlainForm(EmiIngredient stack, CallbackInfo ci) {
+	private static void breadmod$retryUsesWithPlainForm(EmiIngredient stack,
+			org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci) {
 		if (!dev.bbbreaddd.breadmod.BreadmodConfig.nbtLookupFallback()) {
 			return;
 		}
@@ -62,7 +69,9 @@ public class EmiApiMixin {
 				ci.cancel();
 				EmiApi.displayUses(plain);
 			}
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("lookup-uses",
+				"NBT lookup fallback failed", exception);
 		}
 	}
 }

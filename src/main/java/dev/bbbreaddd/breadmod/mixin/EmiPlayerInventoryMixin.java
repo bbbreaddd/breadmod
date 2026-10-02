@@ -19,6 +19,7 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.registry.EmiStackList;
 import dev.emi.emi.runtime.EmiFavorite;
+import dev.bbbreaddd.breadmod.MixinDiagnostics;
 import dev.bbbreaddd.breadmod.RefinedStorageSupport;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
@@ -31,7 +32,9 @@ public abstract class EmiPlayerInventoryMixin {
 		}
 		try {
 			breadmod$buildCraftables(cir);
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("craftables",
+				"RS craftables replacement failed", exception);
 		}
 	}
 
@@ -57,14 +60,11 @@ public abstract class EmiPlayerInventoryMixin {
 			boolean hidden = recipe.hideCraftable();
 			boolean craftable = RefinedStorageSupport.isCraftable(fillable);
 			if (hidden || !craftable) {
-				RefinedStorageSupport.logEssencePipeline(recipe, fillable, hidden, craftable, false, false);
 				continue;
 			}
 			Object key = RefinedStorageSupport.outputKey(fillable.getOutputs().get(0));
 			boolean duplicate = emitted.contains(key);
 			boolean predicateAccepted = !duplicate && predicate.test(recipe);
-			RefinedStorageSupport.logEssencePipeline(recipe, fillable, hidden, craftable,
-				duplicate, predicateAccepted);
 			if (duplicate || !predicateAccepted) {
 				continue;
 			}

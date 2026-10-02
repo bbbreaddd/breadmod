@@ -14,6 +14,7 @@ import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.bom.BoM;
 import dev.bbbreaddd.breadmod.IngredientPreference;
+import dev.bbbreaddd.breadmod.MixinDiagnostics;
 
 @Mixin(value = EmiUtil.class, remap = false)
 public class EmiUtilMixin {
@@ -31,7 +32,9 @@ public class EmiUtilMixin {
 		}
 		try {
 			cir.setReturnValue(IngredientPreference.improvePreferred(recipes, cir.getReturnValue()));
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("preferred-recipe",
+				"canonical recipe preference failed", exception);
 		}
 	}
 
@@ -50,7 +53,9 @@ public class EmiUtilMixin {
 					&& preferred.getOutputs().stream().anyMatch(stack -> stack.isEqual(output))) {
 				cir.setReturnValue(preferred);
 			}
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("recipe-resolution",
+				"recipe resolution preference failed", exception);
 		}
 	}
 }

@@ -32,8 +32,7 @@ public class GridRecipeHandler implements EmiRecipeHandler<AbstractContainerMenu
 		if (context.getType() == EmiCraftContext.Type.CRAFTABLE) {
 			return fillable != null
 				&& RefinedStorageSupport.isCraftingGrid(context.getScreen())
-				&& RefinedStorageSupport.canCraftBacking(fillable, context.getInventory(), context.getScreen())
-				&& RefinedStorageSupport.matchesIngredientNbt(fillable, context.getScreen());
+				&& RefinedStorageSupport.canCraftBacking(fillable, context.getInventory(), context.getScreen());
 		}
 		if (fillable != null && usesDelegate(fillable, context.getScreen())) {
 			EmiRecipeHandler<AbstractContainerMenu> delegate =

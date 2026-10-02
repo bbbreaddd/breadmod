@@ -9,6 +9,7 @@ import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.bom.BoM;
 import dev.bbbreaddd.breadmod.IngredientPreference;
+import dev.bbbreaddd.breadmod.MixinDiagnostics;
 
 @Mixin(value = BoM.class, remap = false)
 public class BoMMixin {
@@ -24,7 +25,9 @@ public class BoMMixin {
 			if (automatic != null) {
 				cir.setReturnValue(automatic);
 			}
-		} catch (Throwable ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("ambiguous-ingredient",
+				"ambiguous ingredient resolution failed", exception);
 		}
 	}
 }

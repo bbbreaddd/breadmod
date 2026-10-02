@@ -33,7 +33,7 @@ public class BreadmodPlugin implements EmiPlugin {
 	private static void safely(Runnable task, String name) {
 		try {
 			task.run();
-		} catch (RuntimeException exception) {
+		} catch (RuntimeException | LinkageError exception) {
 			LOGGER.warn("Breadmod {} fix failed; continuing without it", name, exception);
 		}
 	}

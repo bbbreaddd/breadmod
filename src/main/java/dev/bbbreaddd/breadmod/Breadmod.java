@@ -30,7 +30,7 @@ public final class Breadmod {
 			ModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
 				() -> new ConfigScreenHandler.ConfigScreenFactory(
 					(minecraft, parent) -> new BreadmodConfigScreen(parent)));
-		} catch (RuntimeException exception) {
+		} catch (RuntimeException | LinkageError exception) {
 			LOGGER.warn("Could not register Breadmod config screen", exception);
 		}
 	}

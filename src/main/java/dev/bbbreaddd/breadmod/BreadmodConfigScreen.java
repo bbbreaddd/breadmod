@@ -39,9 +39,17 @@ public class BreadmodConfigScreen extends Screen {
 			BreadmodConfig.nbtLookupFallback(),
 			value -> BreadmodConfig.NBT_LOOKUP_FALLBACK.set(value));
 		row += rowHeight;
-		addToggle(center, row, widgetWidth, "Reusable-ingredient comparison fix",
+		addToggle(center, row, widgetWidth, "Reusable-ingredient comparison fix (requires EMI reload)",
 			BreadmodConfig.reusableIngredientFix(),
 			value -> BreadmodConfig.REUSABLE_INGREDIENT_FIX.set(value));
+		row += rowHeight;
+		addToggle(center, row, widgetWidth, "Aggressive durability normalization (requires EMI reload)",
+			BreadmodConfig.aggressiveDurabilityNormalization(),
+			value -> BreadmodConfig.AGGRESSIVE_DURABILITY_NORMALIZATION.set(value));
+		row += rowHeight;
+		addToggle(center, row, widgetWidth, "Automatically focus a useful recipe",
+			BreadmodConfig.focusUsefulRecipe(),
+			value -> BreadmodConfig.FOCUS_USEFUL_RECIPE.set(value));
 		row += rowHeight;
 		addToggle(center, row, widgetWidth, "Debug diagnostics file",
 			BreadmodConfig.debugDiagnostics(),
@@ -62,7 +70,6 @@ public class BreadmodConfigScreen extends Screen {
 	private void addToggle(int center, int y, int width, String name, boolean current,
 			java.util.function.Consumer<Boolean> setter) {
 		this.addRenderableWidget(CycleButton.onOffBuilder(current)
-			.displayOnlyValue()
 			.create(center - width / 2, y, width, 20, Component.literal(name),
 				(button, value) -> setter.accept(value)));
 	}

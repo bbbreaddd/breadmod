@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.mojang.logging.LogUtils;
 import dev.bbbreaddd.breadmod.GridSnapshot.OutputKey;
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiPlayerInventory;
@@ -36,13 +35,8 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraftforge.registries.ForgeRegistries;
-import org.slf4j.Logger;
 
 public final class RefinedStorageSupport {
-	private static final Logger LOGGER = LogUtils.getLogger();
-	private static final String INFERIUM_CRYSTAL = "matc:inferium_crystal";
-
 	private static AbstractContainerMenu delegateMenu;
 	private static EmiRecipeHandler<AbstractContainerMenu> cachedDelegate;
 	private static boolean delegateResolved;
@@ -53,10 +47,9 @@ public final class RefinedStorageSupport {
 	private static final GridSnapshot SNAPSHOT = new GridSnapshot();
 
 	private static EmiRecipeManager statefulRecipeManager;
+	private static final Map<Item, List<EmiRecipe>> STATEFUL_CACHE = new HashMap<>();
+	private static boolean statefulFullIndexBuilt;
 	private static Map<Item, List<EmiRecipe>> statefulRecipes = Map.of();
-	private static boolean crystalSnapshotLogged;
-	private static boolean crystalCandidatesLogged;
-	private static boolean essencePipelineLogged;
 
 	private RefinedStorageSupport() {
 	}
@@ -76,7 +69,9 @@ public final class RefinedStorageSupport {
 			if (type instanceof MenuType<?> menuType) {
 				return (MenuType<AbstractContainerMenu>) menuType;
 			}
-		} catch (RuntimeException ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("grid-menu-type",
+				"could not resolve RS grid menu type", exception);
 		}
 		return null;
 	}
@@ -96,7 +91,9 @@ public final class RefinedStorageSupport {
 				cachedDelegate = (EmiRecipeHandler<AbstractContainerMenu>) handler;
 				return cachedDelegate;
 			}
-		} catch (RuntimeException ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("delegate-handler",
+				"could not resolve RS recipe handler", exception);
 		}
 		try {
 			Object instance = RsReflection.transferHandlerInstance();
@@ -104,7 +101,9 @@ public final class RefinedStorageSupport {
 				cachedDelegate = (EmiRecipeHandler<AbstractContainerMenu>) (EmiRecipeHandler<?>)
 					new JemiRecipeHandler<>((IRecipeTransferHandler) transferHandler);
 			}
-		} catch (RuntimeException ignored) {
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("transfer-handler",
+				"could not instantiate RS transfer handler", exception);
 		}
 		return cachedDelegate;
 	}
@@ -142,7 +141,9 @@ public final class RefinedStorageSupport {
 					gridType = value.name();
 				}
 			}
-		} catch (ReflectiveOperationException | RuntimeException ignored) {
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("grid-type",
+				"could not read RS grid type; assuming crafting grid", exception);
 		}
 		return gridType;
 	}
@@ -186,30 +187,8 @@ public final class RefinedStorageSupport {
 	static GridSnapshot snapshotFor(AbstractContainerScreen<?> screen) {
 		if (!SNAPSHOT.freshFor(screen)) {
 			SNAPSHOT.refresh(screen);
-			logCrystalSnapshot();
 		}
 		return SNAPSHOT;
-	}
-
-	private static void logCrystalSnapshot() {
-		if (crystalSnapshotLogged) {
-			return;
-		}
-		List<ItemStackHolder> found = new ArrayList<>();
-		for (GridSnapshot.StoredStack stored : SNAPSHOT.storedStacks) {
-			if (isInferiumCrystal(stored.stack().getItem())) {
-				found.add(new ItemStackHolder(stored.amount(), stored.stack().getTag()));
-				break;
-			}
-		}
-		if (!found.isEmpty()) {
-			crystalSnapshotLogged = true;
-			LOGGER.info("Breadmod crystal diagnostic: RS snapshot contains {} x {} with NBT {}",
-				found.get(0).amount(), INFERIUM_CRYSTAL, found.get(0).tag());
-		}
-	}
-
-	private record ItemStackHolder(long amount, Object tag) {
 	}
 
 	public static boolean hasAutocraftableOutput(AbstractContainerScreen<?> screen, EmiRecipe recipe) {
@@ -235,7 +214,9 @@ public final class RefinedStorageSupport {
 				minecraft.setScreen(settingsScreen);
 				return true;
 			}
-		} catch (ReflectiveOperationException | RuntimeException ignored) {
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("autocraft-screen",
+				"could not open RS autocrafting screen", exception);
 		}
 		return false;
 	}
@@ -269,25 +250,67 @@ public final class RefinedStorageSupport {
 		for (EmiStack stack : inventory.inventory.keySet()) {
 			recipes.addAll(manager.getRecipesByInput(stack));
 			if (stack.getKey() instanceof Item item && stack.getNbt() != null) {
-				List<EmiRecipe> pristine = manager.getRecipesByInput(EmiStack.of(item));
-				List<EmiRecipe> fallback = statefulRecipes(manager).getOrDefault(item, List.of());
-				recipes.addAll(pristine);
-				recipes.addAll(fallback);
-				if (!crystalCandidatesLogged && isInferiumCrystal(item)) {
-					crystalCandidatesLogged = true;
-					LOGGER.info("Breadmod crystal diagnostic: candidate lookup direct={} pristine={} fallback={} fallbackIds={}",
-						manager.getRecipesByInput(stack).size(), pristine.size(), fallback.size(),
-						fallback.stream().map(recipe -> String.valueOf(recipe.getId())).limit(20).toList());
-				}
+				recipes.addAll(manager.getRecipesByInput(EmiStack.of(item)));
+				recipes.addAll(fallbackRecipes(manager, item));
 			}
 		}
 		return recipes;
 	}
 
-	private static Map<Item, List<EmiRecipe>> statefulRecipes(EmiRecipeManager manager) {
-		if (statefulRecipeManager == manager) {
-			return statefulRecipes;
+	private static List<EmiRecipe> fallbackRecipes(EmiRecipeManager manager, Item item) {
+		if (statefulRecipeManager != manager) {
+			statefulRecipeManager = manager;
+			STATEFUL_CACHE.clear();
+			statefulFullIndexBuilt = false;
+			statefulRecipes = Map.of();
 		}
+		List<EmiRecipe> cached = STATEFUL_CACHE.get(item);
+		if (cached != null) {
+			return cached;
+		}
+		if (statefulFullIndexBuilt) {
+			return statefulRecipes.getOrDefault(item, List.of());
+		}
+		if (STATEFUL_CACHE.size() >= 12) {
+			statefulRecipes = buildFullIndex(manager);
+			statefulFullIndexBuilt = true;
+			return statefulRecipes.getOrDefault(item, List.of());
+		}
+		List<EmiRecipe> found = scanRecipesForItem(manager, item);
+		STATEFUL_CACHE.put(item, found);
+		return found;
+	}
+
+	private static List<EmiRecipe> scanRecipesForItem(EmiRecipeManager manager, Item item) {
+		List<EmiRecipe> found = new ArrayList<>();
+		for (EmiRecipe recipe : manager.getRecipes()) {
+			if (!recipe.getCategory().equals(VanillaEmiRecipeCategories.CRAFTING)) {
+				continue;
+			}
+			if (recipeUsesItem(recipe, item)) {
+				found.add(recipe);
+			}
+		}
+		return found;
+	}
+
+	private static boolean recipeUsesItem(EmiRecipe recipe, Item item) {
+		try {
+			for (EmiIngredient ingredient : recipe.getInputs()) {
+				for (EmiStack stack : ingredient.getEmiStacks()) {
+					if (stack.getKey() instanceof Item key && key.equals(item)) {
+						return true;
+					}
+				}
+			}
+		} catch (RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("recipe-scan",
+				"recipe scan failed for " + recipe.getId(), exception);
+		}
+		return false;
+	}
+
+	private static Map<Item, List<EmiRecipe>> buildFullIndex(EmiRecipeManager manager) {
 		Map<Item, List<EmiRecipe>> byItem = new HashMap<>();
 		for (EmiRecipe recipe : manager.getRecipes()) {
 			if (!recipe.getCategory().equals(VanillaEmiRecipeCategories.CRAFTING)) {
@@ -302,14 +325,8 @@ public final class RefinedStorageSupport {
 				}
 			}
 		}
-		statefulRecipeManager = manager;
 		statefulRecipes = byItem;
 		return statefulRecipes;
-	}
-
-	private static boolean isInferiumCrystal(Item item) {
-		var id = ForgeRegistries.ITEMS.getKey(item);
-		return id != null && id.toString().equals(INFERIUM_CRYSTAL);
 	}
 
 	public static Object outputKey(EmiStack stack) {
@@ -337,22 +354,6 @@ public final class RefinedStorageSupport {
 		return stacks.size() == 1 ? first : first + "+" + (stacks.size() - 1);
 	}
 
-	public static void logEssencePipeline(EmiRecipe recipe, EmiRecipe fillable,
-			boolean hidden, boolean craftable, boolean duplicate, boolean predicateAccepted) {
-		if (!essencePipelineLogged && isEssenceRecipe(recipe)) {
-			essencePipelineLogged = true;
-			LOGGER.info("Breadmod essence diagnostic: pipeline recipe {} fillable={} hidden={} "
-					+ "craftable={} outputs={} duplicate={} predicateAccepted={}",
-				recipe.getId(), fillable != null, hidden, craftable,
-				fillable == null ? 0 : fillable.getOutputs().size(), duplicate, predicateAccepted);
-		}
-	}
-
-	private static boolean isEssenceRecipe(EmiRecipe recipe) {
-		return recipe != null && new net.minecraft.resources.ResourceLocation("matc", "prudentium_essence")
-			.equals(recipe.getId());
-	}
-
 	public static void debugDump(List<EmiFavorite.Craftable> craftables) {
 		if (!BreadmodConfig.debugDiagnostics()) {
 			return;
@@ -374,7 +375,9 @@ public final class RefinedStorageSupport {
 						.map(RefinedStorageSupport::describe).toList())
 					+ "\n");
 			}
-		} catch (IOException | RuntimeException ignored) {
+		} catch (IOException | RuntimeException | LinkageError exception) {
+			MixinDiagnostics.warnOnce("craftables-dump",
+				"could not write breadmod-craftables.txt", exception);
 		}
 	}
 

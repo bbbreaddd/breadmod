@@ -17,6 +17,9 @@ final class RsReflection {
 	private static final Map<Class<?>, Methods> ENTRY_METHODS = new ConcurrentHashMap<>();
 	private static final Map<Class<?>, ViewMethods> VIEW_METHODS = new ConcurrentHashMap<>();
 	private static final Map<Class<?>, GridAccess> GRID_ACCESS = new ConcurrentHashMap<>();
+	private static final Map<Class<?>, Method> SCREEN_VIEW_METHODS = new ConcurrentHashMap<>();
+	private static final java.util.Set<Class<?>> SCREEN_VIEW_MISSING =
+		ConcurrentHashMap.newKeySet();
 
 	private RsReflection() {
 	}
@@ -67,9 +70,19 @@ final class RsReflection {
 	}
 
 	static Method screenViewMethod(Class<?> screenClass) {
+		Method cached = SCREEN_VIEW_METHODS.get(screenClass);
+		if (cached != null) {
+			return cached;
+		}
+		if (SCREEN_VIEW_MISSING.contains(screenClass)) {
+			return null;
+		}
 		try {
-			return screenClass.getMethod("getView");
-		} catch (NoSuchMethodException | SecurityException ignored) {
+			Method found = screenClass.getMethod("getView");
+			SCREEN_VIEW_METHODS.put(screenClass, found);
+			return found;
+		} catch (NoSuchMethodException | SecurityException e) {
+			SCREEN_VIEW_MISSING.add(screenClass);
 			return null;
 		}
 	}
